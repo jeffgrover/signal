@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Signal — Home network observatory</title>
+  <link rel="stylesheet" href="/app.css">
+  <script defer src="/vendor/plotly.min.js"></script>
+  <script type="module" src="/app.mjs"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to dashboard</a>
+<aside class="sidebar">
+  <a class="brand" href="#main"><span class="brand-mark" aria-hidden="true">∿</span><span>SIGNAL<small>HOME NETWORK OBSERVATORY</small></span></a>
+  <div class="nav-label">YOUR ARCHIVE</div>
+  <nav aria-label="Dashboard sections">
+    <a class="active" href="#overview"><span aria-hidden="true">◫</span> Overview</a>
+    <a href="#history"><span aria-hidden="true">↗</span> Bandwidth history</a>
+    <a href="#failures"><span aria-hidden="true">◉</span> Outages & failures</a>
+    <a href="#rhythm"><span aria-hidden="true">◷</span> Daily patterns</a>
+    <a href="#investigate"><span aria-hidden="true">⌕</span> Investigate next</a>
+  </nav>
+  <div class="sidebar-note"><span class="status-dot"></span> Local archive<br><small>Rock 5B · 1 Gb Ethernet<br>Read-only analysis snapshot</small></div>
+  <div class="sidebar-bottom">A little more signal.<br>A little less guesswork.</div>
+</aside>
+<main id="main">
+  <header class="topbar"><span>Home network <span class="breadcrumb">/</span> <strong>Archive explorer</strong></span><span class="snapshot-pill"><span class="status-dot"></span> HISTORICAL SNAPSHOT</span></header>
+  <div class="content" id="overview">
+    <div class="page-heading"><div><p class="eyebrow">KNOW YOUR CONNECTION</p><h1>Network overview<span>.</span></h1><p class="intro">The trends, interruptions, and questions hidden in your network history.</p></div><button id="export" class="button secondary" disabled>↓ Export samples</button></div>
+    <div id="load-status" role="status" class="load-status">Opening your network archive…</div>
+    <section class="filters" aria-label="Data filters">
+      <div class="filter-top"><div class="segmented" role="group" aria-label="Date range"><button data-range="all" class="selected" aria-pressed="true">All history</button><button data-range="90" aria-pressed="false">Last 90 days</button><button data-range="30" aria-pressed="false">Last 30 days</button></div><div class="dates"><label><span>From</span><input id="start" type="date" aria-label="Start date"></label><span class="date-arrow">→</span><label><span>Through</span><input id="end" type="date" aria-label="End date"></label><button id="reset" class="text-button">Reset</button></div></div>
+      <div class="filter-bottom"><span class="filter-label">PERFORMANCE FILTERS</span><label class="select-wrap"><span>Client</span><select id="client"><option value="">All clients</option><option value="ookla">Ookla</option><option value="python_speedtest_cli">Python speedtest-cli</option></select></label><label class="select-wrap server-select"><span>Endpoint</span><select id="server"><option value="">All test endpoints</option></select></label><span class="filter-hint">Failures follow the date range; failed tests lack endpoint metadata.</span></div>
+    </section>
+    <div class="selection-line"><span id="selection-label">—</span><span>Collector local time · corrected Mbps</span></div>
+    <section class="metrics" aria-label="Archive summary">
+      <article class="metric"><div class="metric-top"><span>Average download</span><span class="metric-symbol down">↓</span></div><div class="metric-value"><span id="avg-down">—</span><small>Mbps</small></div><div id="down-caption" class="metric-caption">Across measured tests</div><div class="metric-accent blue"></div></article>
+      <article class="metric"><div class="metric-top"><span>Average upload</span><span class="metric-symbol up">↑</span></div><div class="metric-value"><span id="avg-up">—</span><small>Mbps</small></div><div id="up-caption" class="metric-caption">Across measured tests</div><div class="metric-accent teal"></div></article>
+      <article class="metric"><div class="metric-top"><span>Connection-error evidence</span><span class="metric-symbol amber">!</span></div><div class="metric-value"><span id="connection-count">—</span><small>tests</small></div><div class="metric-caption">DNS, routing and timeout observations</div><div class="metric-accent amber-bg"></div></article>
+      <article class="metric"><div class="metric-top"><span>Observations in view</span><span class="metric-symbol neutral">≋</span></div><div class="metric-value"><span id="row-count">—</span></div><div id="row-caption" class="metric-caption">Every original observation preserved</div><div class="metric-accent gray"></div></article>
+    </section>
+    <section class="panel" id="history">
+      <div class="panel-heading"><div><p class="section-number">01 / THE BIG PICTURE</p><h2>Bandwidth over time</h2><p>Daily averages reveal the shape of your connection. Empty days stay empty.</p></div><div class="segmented small" role="group" aria-label="Trend smoothing"><button data-trend="daily" class="selected" aria-pressed="true">Daily mean</button><button data-trend="weekly" aria-pressed="false">7-day mean</button></div></div>
+      <div id="trend-chart" class="chart trend-chart" role="img" aria-label="Download and upload average bandwidth over the selected history"></div>
+      <div class="panel-footer"><span id="trend-note">Hover to compare · drag to zoom · click a day to inspect</span><div class="inspect-controls"><label for="inspect-date">Inspect a day</label><input type="date" id="inspect-date"><button id="inspect-day" class="button compact">Open →</button></div></div>
+    </section>
+    <section class="panel" id="failures">
+      <div class="panel-heading"><div><p class="section-number">02 / WHEN SOMETHING BREAKS</p><h2>Outages & failure evidence</h2><p>A failed test is a clue. Its type tells us what it can—and cannot—prove.</p></div><span class="quiet-badge">Not an uptime calculation</span></div>
+      <div id="failure-cards" class="failure-cards" aria-label="Filter failure types"></div>
+      <div id="failure-chart" class="chart failure-chart" role="img" aria-label="Failure timeline by category; marker area increases with daily failed-test count"></div>
+      <div class="chart-note">Each dot is a day with failures; larger dots mean more failed tests. Categories are separated so rare routing errors remain visible. Click a dot to inspect.</div>
+      <div class="episode-heading"><h3>Failure episodes</h3><span>Consecutive failed observations, separated by a successful test or a gap over 30 minutes.</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Evidence type</th><th>First failed observation</th><th>Last failed observation</th><th class="numeric">Tests</th><th class="numeric">Observed span <span title="First-to-last failed sample, not the duration of an outage">ⓘ</span></th><th></th></tr></thead><tbody id="episodes"></tbody></table></div>
+      <div class="panel-footer"><span id="episode-caption">—</span><button id="all-failures" class="text-button">Show all types</button></div>
+      <div class="panel-heading" id="schedule"><div><h2>Does the test fail on a schedule?</h2><p>Outcomes by recorded minute of the hour, across all tests in the date range.</p></div></div>
+      <div id="minute-chart" class="chart secondary-chart" role="img" aria-label="Proportion of measured tests, server-selection failures, connection errors and other outcomes by minute of hour"></div>
+      <div class="chart-note">Each bar totals 100% of observations at that minute. This is a test-outcome mix, not uptime. A repeating pattern can point to the test process; compare shorter date ranges to separate collector versions.</div>
+    </section>
+    <section class="panel" id="rhythm">
+      <div class="panel-heading"><div><p class="section-number">03 / THE DAILY RHYTHM</p><h2>How does time of day change things?</h2><p>Average bandwidth, with the average daily low–high range for each hour.</p></div><label class="select-wrap"><span>Days</span><select id="day-type"><option value="all">Every day</option><option value="weekday">Weekdays</option><option value="weekend">Weekends</option></select></label></div>
+      <div class="split-charts"><div><div class="subplot-title"><span class="legend-dot blue"></span><h3>Download</h3></div><div id="hourly-down" class="chart hourly-chart" role="img" aria-label="Hourly download mean and average daily minimum and maximum"></div></div><div><div class="subplot-title"><span class="legend-dot teal"></span><h3>Upload</h3></div><div id="hourly-up" class="chart hourly-chart" role="img" aria-label="Hourly upload mean and average daily minimum and maximum"></div></div></div>
+      <div class="chart-note">For each date and hour, calculate its mean, minimum and maximum; then average each across dates. Each observed date weighs equally. Shading shows the average daily low–high, not a confidence interval.</div>
+    </section>
+    <div class="two-columns">
+      <section class="panel"><div class="panel-heading"><div><h2>The weekly pattern</h2><p>Typical hourly speeds, Monday to Sunday.</p></div><select id="heat-metric" aria-label="Heatmap metric"><option value="download_mbps">Download</option><option value="upload_mbps">Upload</option></select></div><div id="heat-chart" class="chart secondary-chart" role="img" aria-label="Bandwidth heatmap by weekday and hour"></div><div class="chart-note">Mean of daily hourly averages. Hover for sample-day counts; blank cells mean no observations.</div></section>
+      <section class="panel"><div class="panel-heading"><div><h2>Latency, without the artifacts</h2><p>Daily median and 95th percentile of valid readings.</p></div><label class="checkbox"><input type="checkbox" id="latency-log" checked> Log scale</label></div><div id="latency-chart" class="chart secondary-chart" role="img" aria-label="Valid latency median and 95th percentile over time"></div><div id="latency-caption" class="chart-note">Invalid failure placeholders are excluded. High measured latency remains.</div></section>
+    </div>
+    <section class="panel" id="endpoints"><div class="panel-heading"><div><h2>Compare like with like</h2><p>Changing test endpoints can change the result. Focus on one client and server.</p></div><span id="endpoint-count" class="quiet-badge">—</span></div><div class="table-wrap"><table><thead><tr><th>Test endpoint</th><th>Location</th><th>Client</th><th class="numeric">Tests</th><th class="numeric">Avg. download</th><th class="numeric">Avg. upload</th><th></th></tr></thead><tbody id="endpoint-rows"></tbody></table></div><div class="panel-footer"><span>Top 8 client/endpoint combinations by measured tests in this view.</span><button id="clear-performance" class="text-button">Clear performance filters</button></div></section>
+    <section id="investigate" class="investigations"><div class="section-heading"><div><p class="section-number">04 / FOLLOW THE SIGNAL</p><h2>Where to look next</h2><p>Suggested investigations from the full archive—and the measurements that would make them stronger.</p></div></div><div id="recommendations" class="recommendation-grid"></div></section>
+    <section class="panel" id="quality"><div class="panel-heading"><div><h2>An honest accounting of the data</h2><p>Corrections improve the measurements without erasing the evidence.</p></div><span class="quiet-badge">Full archive</span></div><div id="quality-summary" class="quality-grid"></div><details><summary>Recording gaps and interpretation notes</summary><div class="details-content"><p>Gaps are missing observations, not proven internet outages. The intervals below are longer than two hours, measured on the recorded local clock. Smaller gaps and clock changes are not included.</p><div class="table-wrap"><table><thead><tr><th>Last observation before gap</th><th>First observation after gap</th><th class="numeric">Recording gap</th></tr></thead><tbody id="gap-rows"></tbody></table></div><p>Two redundant Pi-hole resolvers are available for comparison, but these records do not identify which resolver handled a test. DNS failures are not automatically WAN failures. Timestamps have no stored timezone offsets; client latency methods differ. Test averages are sample averages, not time-weighted service guarantees. The archive is a snapshot, not a live monitor.</p></div></details></section>
+    <footer class="footer"><span>SIGNAL <span>·</span> Built from your network, for your network.</span><span id="archive-footer">Local data · offline charts · read-only</span></footer>
+  </div>
+</main>
+<dialog id="day-dialog" aria-labelledby="day-title"><div class="dialog-heading"><div><p class="eyebrow">OBSERVATION DETAIL</p><h2 id="day-title">A day in your network</h2></div><button id="close-day" class="icon-button" aria-label="Close day details">×</button></div><p id="day-summary" class="dialog-summary"></p><div id="day-chart" class="chart day-chart" role="img" aria-label="Individual download and upload tests on the selected day"></div><div id="day-failures" class="day-failures"></div><div class="dialog-data-note">All tests for this day, including those outside the performance filters. Corrected metrics are shown; hover a quality label for original values and provenance.</div><div class="table-wrap dialog-table"><table><thead><tr><th>Time</th><th class="numeric">Down · Mbps</th><th class="numeric">Up · Mbps</th><th class="numeric">Latency · ms</th><th>Outcome / quality</th><th>Endpoint</th></tr></thead><tbody id="day-rows"></tbody></table></div></dialog>
+</body>
+</html>
