@@ -17,6 +17,7 @@ from db import DEFAULT_DB, connect, ensure_schema
 
 
 DEFAULT_SERVER_IDS = ("31903", "12652", "2185")
+FALLBACK_FAILURES = {"server_selection_failed", "server_mismatch"}
 
 
 class OoklaError(ValueError):
@@ -62,15 +63,25 @@ def parse_ookla(payload: str, expected_server_id: str | None = None) -> dict:
 
 def classify_error(message: str) -> str:
     text = message.lower()
-    if "timed out" in text or "timeout" in text:
-        return "timeout"
     if "resolve" in text or "name or service not known" in text:
         return "dns_resolution_failed"
+    if "403" in text:
+        return "service_rejected"
+    if "configuration" in text or "config" in text:
+        return "configuration_failed"
+    if "unable to connect to servers to test latency" in text:
+        return "server_selection_failed"
     if "server_mismatch" in text:
         return "server_mismatch"
+    if "timed out" in text or "timeout" in text:
+        return "timeout"
     if "invalid_json" in text or "not_ookla_json" in text or "invalid_metric" in text:
         return "collector_parse_error"
     return "ookla_error"
+
+
+def should_try_fallback(record: dict) -> bool:
+    return record.get("status") == "failure" and record.get("failure_kind") in FALLBACK_FAILURES
 
 
 def verify_ookla(executable: str) -> str:
@@ -117,6 +128,8 @@ def collect_once(conn, executable: str, server_ids: tuple[str, ...], timeout: in
         record = run_attempt(executable, server_id, timeout)
         insert_attempt(conn, run_id, datetime.now(timezone.utc), attempt_no, server_id, record, client_version)
         if record["status"] == "success":
+            break
+        if not should_try_fallback(record):
             break
     conn.commit()
     return run_id

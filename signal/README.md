@@ -21,12 +21,35 @@ The default order is:
 2. XMission Salt Lake City (`12652`)
 3. SUMOFIBER Salt Lake City (`2185`)
 
-Override the order with repeated `--server-id` flags. A failed primary is kept
-as an attempt and the collector tries the next server. The command refuses the
-Python `speedtest-cli` package; supporting two incompatible JSON schemas was a
-major source of historical ambiguity.
+Override the order with repeated `--server-id` flags. A server-selection or
+server-identity failure is kept as an attempt and the collector tries the next
+server; DNS and configuration failures stop the run so they are not amplified
+by immediate retries. The command refuses the Python `speedtest-cli` package;
+supporting two incompatible JSON schemas was a major source of historical
+ambiguity.
 
-Run continuously every fifteen minutes with:
+For a manual run with timeout, locking, one retry, and failure logging:
+
+```sh
+signal/collector-run.sh run
+```
+
+Install the same wrapper as a fifteen-minute cron job:
+
+```sh
+signal/collector-run.sh install
+```
+
+Remove it with `signal/collector-run.sh uninstall`. Set
+`SIGNAL_NOTIFY_CMD` in `~/.config/signal/collector.env` to a notification
+command; the failed-run message is available to that command as
+`$SIGNAL_FAILURE_MESSAGE`.
+
+The wrapper uses `flock` to prevent overlapping runs, `timeout` to detect a
+stuck Ookla process, and one retry before notifying. Run it directly instead
+of starting the collector's continuous loop when cron owns scheduling.
+
+The continuous loop remains available for development:
 
 ```sh
 python3 signal/collector.py
