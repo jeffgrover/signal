@@ -9,6 +9,21 @@ is the clean forward path; it does not rewrite the historical SQLite sources.
 
 ## Collection
 
+Create the virtual environment once on the collection machine, then install
+the small runtime dependency set:
+
+```sh
+cd /path/to/signal
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r signal/requirements.txt
+```
+
+The runner automatically uses `.venv/bin/python` when it exists. Set
+`SIGNAL_PYTHON` in `~/.config/signal/collector.env` only if the environment is
+somewhere else.
+
 Install the official Ookla CLI as `speedtest`, then run a one-shot check:
 
 ```sh

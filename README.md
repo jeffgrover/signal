@@ -58,6 +58,21 @@ retains failed primary and fallback attempts in DuckDB. It refuses the Python
 `speedtest-cli` JSON format so future trend lines remain comparable. The same
 database can receive the cleaned historical archive and the Pi-hole FTL backup:
 
+On the collection machine, create the environment and install DuckDB before
+running the collector:
+
+```sh
+cd /path/to/signal
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r signal/requirements.txt
+```
+
+The cron wrapper automatically uses `.venv/bin/python`; use
+`SIGNAL_PYTHON=/path/to/signal/.venv/bin/python` in
+`~/.config/signal/collector.env` to override it.
+
 ```sh
 python3 signal/import_snapshot.py \
   --bandwidth analysis/data/speedtests-clean.db \

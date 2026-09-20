@@ -5,7 +5,13 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${SIGNAL_ENV_FILE:-$HOME/.config/signal/collector.env}"
 [[ -r "$ENV_FILE" ]] && source "$ENV_FILE"
 
-PYTHON="${SIGNAL_PYTHON:-python3}"
+if [[ -n "${SIGNAL_PYTHON:-}" ]]; then
+    PYTHON="$SIGNAL_PYTHON"
+elif [[ -x "$ROOT/.venv/bin/python" ]]; then
+    PYTHON="$ROOT/.venv/bin/python"
+else
+    PYTHON="python3"
+fi
 COLLECTOR="$ROOT/signal/collector.py"
 LOG="${SIGNAL_LOG:-$ROOT/signal/data/collector.log}"
 LOCK="${SIGNAL_LOCK:-${XDG_RUNTIME_DIR:-/tmp}/signal-collector.lock}"
