@@ -13,6 +13,7 @@ else
     PYTHON="python3"
 fi
 COLLECTOR="$ROOT/signal/collector.py"
+DB="${SIGNAL_DB:-$ROOT/signal/data/signal.duckdb}"
 LOG="${SIGNAL_LOG:-$ROOT/signal/data/collector.log}"
 LOCK="${SIGNAL_LOCK:-${XDG_RUNTIME_DIR:-/tmp}/signal-collector.lock}"
 TIMEOUT_SECONDS="${SIGNAL_TIMEOUT_SECONDS:-300}"
@@ -22,7 +23,7 @@ CRON_LINE="*/15 * * * * $ROOT/signal/collector-run.sh run $TAG"
 
 run_once() {
     mkdir -p "$(dirname -- "$LOG")" "$(dirname -- "$LOCK")"
-    "$(command -v timeout)" "$TIMEOUT_SECONDS" "$PYTHON" "$COLLECTOR" --once >>"$LOG" 2>&1
+    "$(command -v timeout)" "$TIMEOUT_SECONDS" "$PYTHON" "$COLLECTOR" --db "$DB" --once >>"$LOG" 2>&1
 }
 
 notify_failure() {
@@ -52,6 +53,52 @@ run() {
     return 1
 }
 
+status() {
+    local cron_entry exit_code=0
+    cron_entry="$(crontab -l 2>/dev/null | grep -F "$TAG" || true)"
+    printf 'Cron: %s\n' "${cron_entry:-not installed}"
+    [[ -n "$cron_entry" ]] || exit_code=1
+
+    if [[ -s "$LOG" ]]; then
+        printf 'Latest log: '
+        tail -n 1 "$LOG"
+    else
+        printf 'Latest log: none at %s\n' "$LOG"
+        exit_code=1
+    fi
+
+    if [[ -r "$DB" ]]; then
+        printf 'Latest attempt: '
+        if ! "$PYTHON" - "$DB" <<'PY'
+import sys
+
+import duckdb
+
+
+row = duckdb.connect(sys.argv[1], read_only=True).execute("""
+    SELECT observed_at_local, status, failure_kind, download_mbps, upload_mbps
+    FROM speedtest_attempts
+    ORDER BY observed_at_utc DESC NULLS LAST, attempt_no DESC
+    LIMIT 1
+""").fetchone()
+if row is None:
+    print("none")
+else:
+    observed, result, failure, download, upload = row
+    metrics = "" if download is None else f" | down {download:.1f} Mbps | up {upload:.1f} Mbps"
+    failure = "" if failure is None else f" | {failure}"
+    print(f"{observed} | {result}{failure}{metrics}")
+PY
+        then
+            exit_code=1
+        fi
+    else
+        printf 'Latest attempt: no database at %s\n' "$DB"
+        exit_code=1
+    fi
+    return "$exit_code"
+}
+
 install_cron() {
     local current
     current="$(crontab -l 2>/dev/null || true)"
@@ -76,10 +123,11 @@ uninstall_cron() {
 
 case "${1:-run}" in
     run) run ;;
+    status) status ;;
     install) install_cron ;;
     uninstall) uninstall_cron ;;
     *)
-        printf 'Usage: %s [run|install|uninstall]\n' "$0" >&2
+        printf 'Usage: %s [run|status|install|uninstall]\n' "$0" >&2
         exit 2
         ;;
 esac

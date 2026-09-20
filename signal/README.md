@@ -55,6 +55,12 @@ Install the same wrapper as a fifteen-minute cron job:
 signal/collector-run.sh install
 ```
 
+Check the installed cron entry, latest log line, and latest database attempt:
+
+```sh
+signal/collector-run.sh status
+```
+
 Remove it with `signal/collector-run.sh uninstall`. Set
 `SIGNAL_NOTIFY_CMD` in `~/.config/signal/collector.env` to a notification
 command; the failed-run message is available to that command as
