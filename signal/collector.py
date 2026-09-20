@@ -122,17 +122,19 @@ def insert_attempt(conn, run_id: str, observed_utc: datetime, attempt_no: int, r
     )
 
 
-def collect_once(conn, executable: str, server_ids: tuple[str, ...], timeout: int, client_version: str) -> str:
+def collect_once(conn, executable: str, server_ids: tuple[str, ...], timeout: int, client_version: str) -> tuple[str, bool]:
     run_id = str(uuid4())
+    succeeded = False
     for attempt_no, server_id in enumerate(server_ids, 1):
         record = run_attempt(executable, server_id, timeout)
         insert_attempt(conn, run_id, datetime.now(timezone.utc), attempt_no, server_id, record, client_version)
-        if record["status"] == "success":
+        succeeded = record["status"] == "success"
+        if succeeded:
             break
         if not should_try_fallback(record):
             break
     conn.commit()
-    return run_id
+    return run_id, succeeded
 
 
 def next_boundary(now: datetime, interval_minutes: int) -> datetime:
@@ -161,10 +163,10 @@ def main() -> int:
     with connect(args.db) as conn:
         ensure_schema(conn)
         while True:
-            run_id = collect_once(conn, args.speedtest, tuple(server_id.strip() for server_id in server_ids), args.timeout, client_version)
-            print(f"collected {run_id} using {', '.join(server_ids)}", flush=True)
+            run_id, succeeded = collect_once(conn, args.speedtest, tuple(server_id.strip() for server_id in server_ids), args.timeout, client_version)
+            print(f"{'collected' if succeeded else 'failed'} {run_id} using {', '.join(server_ids)}", flush=True)
             if args.once:
-                return 0
+                return 0 if succeeded else 1
             time.sleep(max(0, (next_boundary(datetime.now(), args.interval) - datetime.now()).total_seconds()))
 
 

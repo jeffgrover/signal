@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "signal"))
 
-from collector import OoklaError, classify_error, collect_once, next_boundary, parse_ookla, should_try_fallback  # noqa: E402
+from collector import OoklaError, classify_error, collect_once, main, next_boundary, parse_ookla, should_try_fallback  # noqa: E402
 
 
 class SignalCollectorTest(unittest.TestCase):
@@ -47,11 +47,23 @@ class SignalCollectorTest(unittest.TestCase):
         server_failure = {"status": "failure", "failure_kind": "server_selection_failed", "command": []}
         success = {"status": "success", "command": [], "server_id": "2"}
         with patch("collector.insert_attempt"), patch("collector.run_attempt", side_effect=[dns_failure, success]) as run:
-            collect_once(conn, "speedtest", ("1", "2"), 1, "Ookla")
+            _, succeeded = collect_once(conn, "speedtest", ("1", "2"), 1, "Ookla")
         self.assertEqual(run.call_count, 1)
+        self.assertFalse(succeeded)
         with patch("collector.insert_attempt"), patch("collector.run_attempt", side_effect=[server_failure, success]) as run:
-            collect_once(conn, "speedtest", ("1", "2"), 1, "Ookla")
+            _, succeeded = collect_once(conn, "speedtest", ("1", "2"), 1, "Ookla")
         self.assertEqual(run.call_count, 2)
+        self.assertTrue(succeeded)
+
+    def test_once_exits_nonzero_when_collection_fails(self):
+        with (
+            patch.object(sys, "argv", ["collector.py", "--once"]),
+            patch("collector.verify_ookla", return_value="Ookla"),
+            patch("collector.connect"),
+            patch("collector.ensure_schema"),
+            patch("collector.collect_once", return_value=("run-id", False)),
+        ):
+            self.assertEqual(main(), 1)
 
 
 if __name__ == "__main__":
