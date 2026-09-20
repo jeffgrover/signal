@@ -19,11 +19,30 @@ LOCK="${SIGNAL_LOCK:-${XDG_RUNTIME_DIR:-/tmp}/signal-collector.lock}"
 TIMEOUT_SECONDS="${SIGNAL_TIMEOUT_SECONDS:-300}"
 RETRY_DELAY_SECONDS="${SIGNAL_RETRY_DELAY_SECONDS:-30}"
 TAG="# signal-collector"
-CRON_LINE="*/15 * * * * $ROOT/signal/collector-run.sh run $TAG"
+
+resolve_speedtest() {
+    local executable version
+    executable="$(command -v "${SIGNAL_SPEEDTEST:-speedtest}" 2>/dev/null || true)"
+    if [[ -z "$executable" ]]; then
+        printf 'Official Ookla CLI not found; install speedtest or set SIGNAL_SPEEDTEST.\n' >&2
+        return 1
+    fi
+    if ! version="$("$executable" --version 2>&1)"; then
+        printf 'Unable to run %s --version.\n' "$executable" >&2
+        return 1
+    fi
+    if [[ "${version,,}" != *ookla* ]]; then
+        printf '%s is not the official Ookla CLI.\n' "$executable" >&2
+        return 1
+    fi
+    printf '%s\n' "$executable"
+}
 
 run_once() {
+    local speedtest
     mkdir -p "$(dirname -- "$LOG")" "$(dirname -- "$LOCK")"
-    "$(command -v timeout)" "$TIMEOUT_SECONDS" "$PYTHON" "$COLLECTOR" --db "$DB" --once >>"$LOG" 2>&1
+    speedtest="$(resolve_speedtest 2>>"$LOG")" || return 1
+    "$(command -v timeout)" "$TIMEOUT_SECONDS" "$PYTHON" "$COLLECTOR" --db "$DB" --speedtest "$speedtest" --once >>"$LOG" 2>&1
 }
 
 notify_failure() {
@@ -100,17 +119,23 @@ PY
 }
 
 install_cron() {
-    local current
+    local action cron_line current speedtest
+    speedtest="$(resolve_speedtest)" || return 1
+    printf -v cron_line '*/15 * * * * SIGNAL_SPEEDTEST=%q %q run %s' "$speedtest" "$ROOT/signal/collector-run.sh" "$TAG"
     current="$(crontab -l 2>/dev/null || true)"
-    if printf '%s\n' "$current" | grep -Fq "$TAG"; then
+    if printf '%s\n' "$current" | grep -Fxq "$cron_line"; then
         printf 'Signal cron job is already installed.\n'
         return 0
     fi
+    action="Installed"
+    if printf '%s\n' "$current" | grep -Fq "$TAG"; then
+        action="Updated"
+    fi
     {
-        printf '%s\n' "$current"
-        printf '%s\n' "$CRON_LINE"
+        printf '%s\n' "$current" | awk -v tag="$TAG" 'index($0, tag) == 0'
+        printf '%s\n' "$cron_line"
     } | crontab -
-    printf 'Installed: %s\n' "$CRON_LINE"
+    printf '%s: %s\n' "$action" "$cron_line"
 }
 
 uninstall_cron() {

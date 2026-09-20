@@ -55,6 +55,10 @@ Install the same wrapper as a fifteen-minute cron job:
 signal/collector-run.sh install
 ```
 
+Installation resolves `SIGNAL_SPEEDTEST` or `speedtest` from the current
+`PATH`, verifies that it is the official Ookla CLI, and records its absolute
+path in the cron entry. Re-run `install` to update an existing Signal entry.
+
 Check the installed cron entry, latest log line, and latest database attempt:
 
 ```sh
