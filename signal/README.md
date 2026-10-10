@@ -189,22 +189,14 @@ os.chown(target, int(os.environ['SUDO_UID']), int(os.environ['SUDO_GID']))
 PY
 ```
 
-Import the existing cleaned bandwidth archive and the offline Pi-hole backup
-into the same DuckDB file, holding the collector lock to prevent writer clashes:
+Keep bulk imports off the live collection/DNS machine. Our eleven-million-query
+import stalled a 4 GB host; the successful laptop import peaked at 4.65 GiB
+resident memory. The exact cause was not established by the Pi's kernel logs.
+A small Python batch does not bound the memory needed by the whole transaction.
+Transfer the immutable archives and a consistent collector copy, then import
+into a working copy on the laptop.
 
-```sh
-flock -w 5 /tmp/signal-collector.lock .venv/bin/python signal/import_snapshot.py \
-  --bandwidth analysis/data/speedtests-clean.db \
-  --pihole signal/data/pihole-snapshot.db
-```
-
-The import is atomic, keeps source hashes and historical quality flags/original
-values, and does not modify the SQLite inputs. Rerunning the same archive is
-idempotent. IDs belong to one historical archive and one FTL database lineage:
-do not merge unrelated databases or a reset FTL database using overlapping IDs.
-Collection/health skip a tick if an import holds their lock; they resume afterward.
-
-To transfer a consistent DuckDB copy, checkpoint and copy it under that same
+To transfer a consistent DuckDB copy, checkpoint and copy it under the collector
 lock on the Pi. Choose an unused snapshot filename:
 
 ```sh
@@ -225,16 +217,31 @@ target.chmod(0o600)
 PY
 ```
 
-On the laptop, copy that offline file using SCP (substitute your host and path),
-then build locally. Preserve any existing laptop database before replacing it:
+On the laptop, copy the offline files using SCP (substitute your host and path).
+Choose unused local filenames on each refresh; keep the collector snapshot
+unchanged and import into a separate working copy:
 
 ```sh
 umask 077
 mkdir -p signal/data
 scp USER@HOST:/path/to/signal/signal/data/viewer-snapshot.duckdb signal/data/viewer-snapshot.duckdb
-.venv/bin/python signal/export_static.py --db signal/data/viewer-snapshot.duckdb
+scp USER@HOST:/path/to/signal/signal/data/pihole-snapshot.db signal/data/pihole-snapshot.db
+scp USER@HOST:/path/to/signal/analysis/data/speedtests-clean.db signal/data/bandwidth-snapshot.db
+test ! -e signal/data/viewer-working.duckdb && cp -p signal/data/viewer-snapshot.duckdb signal/data/viewer-working.duckdb
+.venv/bin/python signal/import_snapshot.py --db signal/data/viewer-working.duckdb \
+  --bandwidth signal/data/bandwidth-snapshot.db \
+  --pihole signal/data/pihole-snapshot.db
+.venv/bin/python signal/export_static.py --db signal/data/viewer-working.duckdb
 python3 -m http.server 8765 --bind 127.0.0.1 --directory signal/static
 ```
+
+The import is atomic, keeps source hashes and historical quality flags/original
+values, and does not modify the SQLite inputs. Rerunning the same archive is
+idempotent. IDs belong to one historical archive and one FTL database lineage:
+do not merge unrelated databases or a reset FTL database using overlapping IDs.
+Never copy or import over the Pi's active database. If importing on a collection
+machine for a small development fixture, hold `/tmp/signal-collector.lock` with
+`flock`; collection and health checks skip ticks while that lock is held.
 
 Open `http://127.0.0.1:8765`. Export opens DuckDB read-only and generates HTML,
 bundled chart assets, `data/archive.json`, a manifest, and six compressed Parquet
@@ -249,8 +256,9 @@ results are from the last completed batch in the snapshot, not live status.
 Historical local timestamps are preserved; forward attempts also retain UTC.
 
 <!-- shortcut: refresh is a manual snapshot/transfer/export; automate only when the viewer's permanent host is chosen. -->
-Repeat snapshot, transfer, export, and browser reload for fresh data. Nothing is
-automatically synchronized. The static directory is movable to another private
-host later, without adding a database server or redesigning the charts.
+Repeat snapshot, transfer, local import, export, and browser reload for fresh
+data. Nothing is automatically synchronized. The static directory is movable
+to another private host later, without adding a database server or redesigning
+the charts.
 Both `signal/data/` and `signal/static/` are ignored by Git. **Do not publish
 these artifacts publicly:** domain/client summaries contain private history.

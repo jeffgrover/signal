@@ -79,8 +79,9 @@ The bundled chart library retains its upstream header and [MIT license](web/vend
 The forward path now lives under [signal/](signal/). It standardizes on the
 official Ookla CLI, pins three historically stable Salt Lake-area servers, and
 retains failed primary and fallback attempts in DuckDB. It refuses the Python
-`speedtest-cli` JSON format so future trend lines remain comparable. The same
-database can receive the cleaned historical archive and the Pi-hole FTL backup:
+`speedtest-cli` JSON format so future trend lines remain comparable. The laptop's
+working copy can receive the historical archive and Pi-hole FTL backup while
+the Pi continues collecting:
 
 On the collection machine, create the environment and install DuckDB before
 running the collector:
@@ -104,16 +105,21 @@ the configured notification hook. `signal/collector-run.sh status` reports
 both jobs, recent data/probes, and pending delivery. See [signal/README.md](signal/README.md)
 for dependencies, alert setup, overrides, and the off-host monitoring limitation.
 
+On the laptop, after transferring a consistent collector database copy and
+the immutable archives:
+
 ```sh
-python3 signal/import_snapshot.py \
+.venv/bin/python signal/import_snapshot.py --db signal/data/signal.duckdb \
   --bandwidth analysis/data/speedtests-clean.db \
   --pihole /path/to/pihole-FTL-backup.db
-python3 signal/export_static.py
+.venv/bin/python signal/export_static.py --db signal/data/signal.duckdb
 ```
 
 The build produces a complete private static viewer plus six Parquet artifacts
 for analysis, including historical quality flags and network probes. Collection
-and imports happen on the home machine; the laptop builds from a database copy.
+happens on the home machine; bulk imports and builds run on the laptop's copy.
+An eleven-million-query import stalled our 4 GB collection/DNS host; do not run
+large imports on that live host. See the transfer workflow linked above.
 For a read-only dynamic preview, `dashboard.py --db signal/data/signal.duckdb`
 also supports the canonical schema (DuckDB must be installed).
 
