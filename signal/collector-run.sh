@@ -46,13 +46,15 @@ run_once() {
 }
 
 notify_failure() {
-    local message="Signal collector failed after retry on $(hostname) at $(date -Is). See $LOG"
+    local message="Signal collector failed after retry. Check collector-run.sh status on the collection machine."
     if [[ -n "${SIGNAL_NOTIFY_CMD:-}" ]]; then
-        SIGNAL_FAILURE_MESSAGE="$message" bash -c "$SIGNAL_NOTIFY_CMD" || true
-    else
-        logger -t signal-collector -- "$message" 2>/dev/null || true
-        printf '%s\n' "$message" >&2
+        if SIGNAL_FAILURE_MESSAGE="$message" bash -c "$SIGNAL_NOTIFY_CMD"; then
+            return 0
+        fi
+        printf 'Signal notification delivery failed.\n' >&2
     fi
+    logger -t signal-collector -- "$message" 2>/dev/null || true
+    printf '%s See %s\n' "$message" "$LOG" >&2
 }
 
 run() {

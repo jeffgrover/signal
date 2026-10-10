@@ -70,6 +70,34 @@ Remove it with `signal/collector-run.sh uninstall`. Set
 command; the failed-run message is available to that command as
 `$SIGNAL_FAILURE_MESSAGE`.
 
+For ntfy, subscribe to an unguessable topic at `https://ntfy.sh/app`, allow
+desktop notifications, and enable background notifications in Settings. Add
+this line to `~/.config/signal/collector.env`, replacing `YOUR_RANDOM_TOPIC`:
+
+```sh
+SIGNAL_NOTIFY_CMD='/usr/bin/curl --fail --silent --show-error --max-time 15 --header "Title: Signal collector alert" --header "Tags: warning" --data-binary "$SIGNAL_FAILURE_MESSAGE" "https://ntfy.sh/YOUR_RANDOM_TOPIC" >/dev/null'
+```
+
+Use the absolute path reported by `command -v curl` if it differs. No ntfy
+client installation is needed. The alert contains no hostname, local path,
+metrics, or browsing history. Free unreserved topics are not access-controlled:
+anyone who knows the topic can read or publish messages. Keep the topic in the
+machine's private environment file, not in Git. A failed notification falls
+back to local logging.
+
+Test the configured hook without interrupting collection:
+
+```sh
+. "$HOME/.config/signal/collector.env"
+SIGNAL_FAILURE_MESSAGE='Signal notification test: the collector alert hook is connected.' bash -c "$SIGNAL_NOTIFY_CMD"
+```
+
+Chrome and Firefox must remain running for desktop delivery; the ntfy tab can
+be closed when background notifications are enabled. Alerts cannot be sent
+while the collection machine has no internet connection. This failed-run hook
+does not detect a stopped cron daemon or stale data; an independent heartbeat
+check is still needed for those cases.
+
 The wrapper uses `flock` to prevent overlapping runs, `timeout` to detect a
 stuck Ookla process, and one retry before notifying. Run it directly instead
 of starting the collector's continuous loop when cron owns scheduling.

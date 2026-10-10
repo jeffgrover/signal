@@ -14,6 +14,54 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class CollectorRunnerTest(unittest.TestCase):
+    def test_failed_run_sends_generic_alert_and_logs_delivery_failure(self):
+        with TemporaryDirectory() as directory:
+            temp = Path(directory)
+            speedtest = temp / "speedtest"
+            speedtest.write_text("#!/bin/sh\nprintf '%s\\n' 'Speedtest by Ookla 1.2.0'\n")
+            speedtest.chmod(0o755)
+            fake_python = temp / "python"
+            fake_python.write_text("#!/bin/sh\nexit 1\n")
+            fake_python.chmod(0o755)
+            fake_bin = temp / "bin"
+            fake_bin.mkdir()
+            logger = fake_bin / "logger"
+            logger.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$LOGGER_CAPTURE"\n')
+            logger.chmod(0o755)
+            notification = temp / "notification"
+            local_log = temp / "notification-log"
+            for notify_exit in (0, 1):
+                with self.subTest(notify_exit=notify_exit):
+                    result = subprocess.run(
+                        [str(ROOT / "signal" / "collector-run.sh"), "run"],
+                        capture_output=True,
+                        text=True,
+                        env={
+                            **os.environ,
+                            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                            "SIGNAL_ENV_FILE": str(temp / "missing.env"),
+                            "SIGNAL_SPEEDTEST": str(speedtest),
+                            "SIGNAL_PYTHON": str(fake_python),
+                            "SIGNAL_LOCK": str(temp / "collector.lock"),
+                            "SIGNAL_LOG": str(temp / "collector.log"),
+                            "SIGNAL_RETRY_DELAY_SECONDS": "0",
+                            "SIGNAL_NOTIFY_CMD": 'printf "%s" "$SIGNAL_FAILURE_MESSAGE" > "$NOTIFY_CAPTURE"; exit "$NOTIFY_EXIT"',
+                            "NOTIFY_CAPTURE": str(notification),
+                            "NOTIFY_EXIT": str(notify_exit),
+                            "LOGGER_CAPTURE": str(local_log),
+                        },
+                        check=False,
+                    )
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertEqual(notification.read_text(), "Signal collector failed after retry. Check collector-run.sh status on the collection machine.")
+                    if notify_exit:
+                        self.assertIn("notification delivery failed", result.stderr)
+                        self.assertIn(str(temp / "collector.log"), result.stderr)
+                        self.assertIn("failed after retry", local_log.read_text())
+                    else:
+                        self.assertFalse(local_log.exists())
+                        self.assertEqual(result.stderr, "")
+
     def test_run_uses_speedtest_path_from_environment_file(self):
         with TemporaryDirectory() as temp:
             temp = Path(temp)
