@@ -73,6 +73,13 @@ The cron wrapper automatically uses `.venv/bin/python`; use
 `SIGNAL_PYTHON=/path/to/signal/.venv/bin/python` in
 `~/.config/signal/collector.env` to override it.
 
+`signal/collector-run.sh install` installs fifteen-minute collection and
+five-minute health checks. The latter record separate DNS/gateway/external
+probes, detect stale collector data, and send transition/recovery alerts through
+the configured notification hook. `signal/collector-run.sh status` reports
+both jobs, recent data/probes, and pending delivery. See [signal/README.md](signal/README.md)
+for dependencies, alert setup, overrides, and the off-host monitoring limitation.
+
 ```sh
 python3 signal/import_snapshot.py \
   --bandwidth analysis/data/speedtests-clean.db \

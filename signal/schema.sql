@@ -39,6 +39,16 @@ CREATE TABLE IF NOT EXISTS speedtest_attempts (
 CREATE VIEW IF NOT EXISTS speedtest_results AS
 SELECT * FROM speedtest_attempts WHERE status = 'success';
 
+CREATE TABLE IF NOT EXISTS network_probes (
+    probe_id VARCHAR PRIMARY KEY,
+    observed_at_utc TIMESTAMPTZ NOT NULL,
+    kind VARCHAR NOT NULL,
+    target VARCHAR NOT NULL,
+    status VARCHAR NOT NULL,
+    elapsed_ms DOUBLE,
+    detail VARCHAR
+);
+
 CREATE TABLE IF NOT EXISTS pihole_domains (
     domain_id INTEGER PRIMARY KEY,
     domain VARCHAR

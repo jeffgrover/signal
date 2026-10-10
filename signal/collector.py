@@ -63,6 +63,10 @@ def parse_ookla(payload: str, expected_server_id: str | None = None) -> dict:
 
 def classify_error(message: str) -> str:
     text = message.lower()
+    if "network is unreachable" in text:
+        return "network_unreachable"
+    if "no route to host" in text:
+        return "no_route_to_host"
     if "resolve" in text or "name or service not known" in text:
         return "dns_resolution_failed"
     if "403" in text:

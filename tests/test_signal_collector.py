@@ -36,6 +36,8 @@ class SignalCollectorTest(unittest.TestCase):
         self.assertEqual(classify_error("Unable to connect to servers to test latency."), "server_selection_failed")
         self.assertEqual(classify_error("Configuration failed (403)"), "service_rejected")
         self.assertEqual(classify_error("Configuration - Couldn't resolve host name"), "dns_resolution_failed")
+        self.assertEqual(classify_error("Configuration - Couldn't connect (Network is unreachable)"), "network_unreachable")
+        self.assertEqual(classify_error("Configuration - No route to host"), "no_route_to_host")
         self.assertTrue(should_try_fallback({"status": "failure", "failure_kind": "server_selection_failed"}))
         self.assertTrue(should_try_fallback({"status": "failure", "failure_kind": "server_mismatch"}))
         self.assertFalse(should_try_fallback({"status": "failure", "failure_kind": "dns_resolution_failed"}))

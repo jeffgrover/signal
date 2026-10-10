@@ -32,8 +32,8 @@ target
 /analysis/data/*.duckdb
 /signal/data/*.duckdb*
 /signal/__pycache__/
-/signal/static/data/*.parquet
-/signal/static/data/manifest.json
+/signal/static/
+/signal/data/
 /analysis/data/*.duckdb.tmp
 
 # Private point-in-time reports and query summaries
