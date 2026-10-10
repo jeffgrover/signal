@@ -39,6 +39,16 @@ CREATE TABLE IF NOT EXISTS speedtest_attempts (
 CREATE VIEW IF NOT EXISTS speedtest_results AS
 SELECT * FROM speedtest_attempts WHERE status = 'success';
 
+CREATE TABLE IF NOT EXISTS speedtest_quality (
+    attempt_id VARCHAR PRIMARY KEY,
+    bandwidth_status VARCHAR,
+    latency_status VARCHAR,
+    original_download DOUBLE,
+    original_upload DOUBLE,
+    original_ping DOUBLE,
+    source_log_line BIGINT
+);
+
 CREATE TABLE IF NOT EXISTS network_probes (
     probe_id VARCHAR PRIMARY KEY,
     observed_at_utc TIMESTAMPTZ NOT NULL,

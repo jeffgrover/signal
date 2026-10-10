@@ -31,12 +31,14 @@ def import_bandwidth(conn, path: Path) -> int:
         rows = source.execute("""
             SELECT source_rowid, timestamp_local, download_mbps, upload_mbps, latency_ms,
                    failure_kind, client, server_id, server_name, server_location, server_country,
-                   original_error, source_log_line
+                   original_error, source_log_line, bandwidth_status, latency_status,
+                   original_download, original_upload, original_ping
             FROM observations ORDER BY source_rowid
         """).fetchall()
     except sqlite3.Error as error:
-        source.close()
         raise SystemExit(f"{path} is not a cleaned bandwidth snapshot: {error}") from error
+    finally:
+        source.close()
     values = []
     for row in rows:
         success = row["download_mbps"] is not None and row["upload_mbps"] is not None
@@ -61,7 +63,15 @@ def import_bandwidth(conn, path: Path) -> int:
     conn.register("_bandwidth_rows", frame)
     conn.execute("INSERT OR IGNORE INTO speedtest_attempts SELECT * FROM _bandwidth_rows")
     conn.unregister("_bandwidth_rows")
-    source.close()
+    quality = pd.DataFrame.from_records([
+        [f"legacy-speedtest-{row['source_rowid']}", row['bandwidth_status'], row['latency_status'],
+         row['original_download'], row['original_upload'], row['original_ping'], row['source_log_line']]
+        for row in rows
+    ], columns=["attempt_id", "bandwidth_status", "latency_status", "original_download",
+                "original_upload", "original_ping", "source_log_line"])
+    conn.register("_quality_rows", quality)
+    conn.execute("INSERT OR REPLACE INTO speedtest_quality SELECT * FROM _quality_rows")
+    conn.unregister("_quality_rows")
     return len(values)
 
 
@@ -131,17 +141,23 @@ def main() -> int:
     if not args.bandwidth and not args.pihole:
         parser.error("provide --bandwidth and/or --pihole")
     with connect(args.db) as conn:
-        ensure_schema(conn)
-        if args.bandwidth:
-            print(f"Importing bandwidth archive {args.bandwidth}…", flush=True)
-            count = import_bandwidth(conn, args.bandwidth)
-            record_source(conn, "legacy_bandwidth", args.bandwidth, count, "Cleaned immutable speedtest archive")
-            print(f"  imported {count:,} bandwidth rows", flush=True)
-        if args.pihole:
-            print(f"Importing Pi-hole archive {args.pihole}…", flush=True)
-            count = import_pihole(conn, args.pihole)
-            record_source(conn, "pihole_ftl", args.pihole, count, "Immutable FTL database backup")
-            print(f"  imported {count:,} Pi-hole queries", flush=True)
+        conn.execute("BEGIN TRANSACTION")
+        try:
+            ensure_schema(conn)
+            if args.bandwidth:
+                print(f"Importing bandwidth archive {args.bandwidth}…", flush=True)
+                count = import_bandwidth(conn, args.bandwidth)
+                record_source(conn, "legacy_bandwidth", args.bandwidth, count, "Cleaned immutable speedtest archive")
+                print(f"  processed {count:,} bandwidth rows", flush=True)
+            if args.pihole:
+                print(f"Importing Pi-hole archive {args.pihole}…", flush=True)
+                count = import_pihole(conn, args.pihole)
+                record_source(conn, "pihole_ftl", args.pihole, count, "Immutable FTL database backup")
+                print(f"  processed {count:,} Pi-hole queries", flush=True)
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
         conn.execute("CHECKPOINT")
     return 0
 

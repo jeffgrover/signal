@@ -1,8 +1,32 @@
 # Signal — home network archive explorer
 
-A local dashboard for the home-network speedtest history. It uses the cleaned analysis snapshot, preserves failure evidence, and keeps corrections traceable to the original records. This is an exploratory dashboard, not a live collector.
+A private dashboard for home-network speedtest history, Pi-hole activity, and
+connectivity probes. The Pi collects into DuckDB; a static snapshot runs on the
+laptop. Historical corrections remain traceable to the original records.
 
-## Run
+## Private laptop viewer
+
+Install `signal/requirements.txt` in a virtual environment, then build from a
+consistent copy of the Pi's canonical database:
+
+```sh
+.venv/bin/python signal/export_static.py --db signal/data/signal.duckdb
+python3 -m http.server 8765 --bind 127.0.0.1 --directory signal/static
+```
+
+Open **http://127.0.0.1:8765**. The build includes the existing speed charts,
+historical correction details, daily Pi-hole volume, monthly top domains and
+clients, and separate DNS/gateway/external probe results. It needs no database
+or Python packages to serve. Assets are bundled; charts make no external requests.
+
+The viewer is a snapshot, not a live connection to the Pi. Copy a newer database,
+rerun the export, and reload to refresh. Keep `signal/data/` and `signal/static/`
+private: both are ignored by Git, and domain/client summaries are browsing
+history. Do not upload this build to public hosting. See
+[signal/README.md](signal/README.md#import-and-static-build) for safe backup,
+import, transfer, and refresh commands.
+
+## Legacy SQLite viewer
 
 ```sh
 python3 dashboard.py
@@ -33,7 +57,7 @@ Date filters apply to every analytical view. **Client and endpoint filters apply
 - Overall and daily bandwidth means weight each measured test equally. Seven-day means pool the tests in the trailing seven days within the selected date range. Unobserved days remain gaps, including in the smoothed view.
 - Intraday low/mean/high first calculates each date/hour's minimum, mean and maximum, then averages these across dates, giving each observed date equal weight. The band is the average daily range, not a confidence interval or an all-time extreme. The heatmap uses the same equal-date weighting.
 - Failure episodes join consecutive observations of the same type, splitting at a different outcome, a gap over 30 minutes, or a backward clock jump. Their first-to-last observed spans are **not outage durations**. Missing collection and failed-test percentages cannot establish uptime.
-- Original local timestamps are displayed unchanged; no timezone offset was stored. The UI uses a virtual clock to prevent the browser from silently shifting them. Recording gaps over two hours are flagged; one-hour daylight-saving changes are not labeled gaps.
+- Original local timestamps are displayed unchanged. Historical rows have no stored timezone offset; forward attempts also retain UTC. The UI uses a virtual clock to prevent the browser from silently shifting local times. Recording gaps over two hours are flagged; one-hour daylight-saving changes are not labeled gaps.
 - Valid low bandwidth and high latency remain. DNS failure does not identify an ISP failure or which of the two Pi-holes was involved. Both endpoint choice and the switch between Ookla and Python speedtest-cli can affect comparisons.
 
 The September 19, 2026 archive contains **30,944 observations**, **21,436 measured throughput results** and **20,327 latency results without known invalid markers**. Corrected full-history sample means are **673.3 Mbps down / 622.7 Mbps up**. A later throughput decline, clustered DNS errors, and frequent half-hour server-selection failures are useful investigation targets, with the limitations above.
@@ -87,10 +111,11 @@ python3 signal/import_snapshot.py \
 python3 signal/export_static.py
 ```
 
-The build produces static Parquet inputs in the style of `../arcade-road-trip`:
-collection and imports happen on the home machine, then a static viewer can be
-published without exposing a live database. The existing exploratory dashboard
-remains available while the new static viewer is built against this schema.
+The build produces a complete private static viewer plus six Parquet artifacts
+for analysis, including historical quality flags and network probes. Collection
+and imports happen on the home machine; the laptop builds from a database copy.
+For a read-only dynamic preview, `dashboard.py --db signal/data/signal.duckdb`
+also supports the canonical schema (DuckDB must be installed).
 
 ## Pi-hole exploration and historical storage
 
@@ -98,5 +123,4 @@ Pi-hole FTL backups are imported as read-only inputs and are intentionally
 ignored because they contain private query history. `analysis/build_duckdb.py`
 remains the reproducible historical-analysis builder;
 `signal/import_snapshot.py` is the forward canonical importer. The existing
-exploratory dashboard remains on SQLite while the new static viewer is built
-against the Signal DuckDB schema.
+SQLite dashboard remains available alongside the unified DuckDB/static viewer.

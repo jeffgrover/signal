@@ -1,4 +1,4 @@
-"""Serve the local, read-only network archive. No Python dependencies required."""
+"""Serve a local, read-only SQLite or Signal DuckDB network archive."""
 
 import argparse
 import gzip
@@ -26,6 +26,14 @@ STATIC = {
 
 
 def load_data(path):
+    if Path(path).suffix == ".duckdb":
+        import duckdb
+
+        try:
+            with duckdb.connect(str(path), read_only=True) as conn:
+                return signal_data(conn)
+        except duckdb.Error as error:
+            raise ValueError(str(error)) from error
     conn = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True)
     try:
         rows = conn.execute(f"SELECT {','.join(FIELDS)} FROM observations ORDER BY source_rowid").fetchall()
@@ -39,9 +47,53 @@ def load_data(path):
         conn.close()
 
 
+def signal_data(conn):
+    """Present canonical measurements using the existing chart contract."""
+    rows = conn.execute("""
+        SELECT s.source_rowid, s.observed_at_local, s.download_mbps, s.upload_mbps,
+               s.latency_ms, s.failure_kind,
+               COALESCE(q.bandwidth_status, CASE WHEN s.status='success' THEN 'measured' ELSE 'not_available' END),
+               COALESCE(q.latency_status, CASE WHEN s.latency_ms IS NULL THEN 'not_available' ELSE 'valid' END),
+               CASE WHEN lower(s.client_version) LIKE '%ookla%' THEN 'ookla'
+                    WHEN lower(s.client_version) LIKE '%python%' THEN 'python_speedtest_cli'
+                    ELSE s.client_version END,
+               s.server_id, q.original_download, q.original_upload, q.original_ping,
+               s.error_message, q.source_log_line, s.observed_at_utc, s.source_name, s.attempt_id
+        FROM speedtest_attempts s LEFT JOIN speedtest_quality q USING(attempt_id)
+        ORDER BY CASE WHEN s.source_name='legacy-bandwidth' THEN 0 ELSE 1 END,
+                 s.source_rowid, s.observed_at_utc, s.attempt_no, s.attempt_id
+    """).fetchall()
+    servers = conn.execute("""SELECT DISTINCT server_id, server_name, server_location, server_country
+                              FROM speedtest_attempts WHERE server_id IS NOT NULL""").fetchall()
+
+    def records(query):
+        cursor = conn.execute(query)
+        names = [column[0] for column in cursor.description]
+        return [dict(zip(names, row)) for row in cursor.fetchall()]
+
+    return {
+        "fields": FIELDS + ["observed_at_utc", "source_name", "attempt_id"], "rows": rows, "servers": servers,
+        "meta": {"storage": "signal_duckdb", "created_utc": conn.execute("SELECT now()").fetchone()[0]},
+        "pihole_daily": records("SELECT * FROM pihole_daily ORDER BY local_date"),
+        "pihole_domains": records("""SELECT * FROM pihole_domain_monthly
+            QUALIFY row_number() OVER (PARTITION BY month ORDER BY total_queries DESC, domain) <= 20
+            ORDER BY month DESC, total_queries DESC, domain"""),
+        "pihole_clients": records("""SELECT * FROM pihole_client_monthly
+            QUALIFY row_number() OVER (PARTITION BY month ORDER BY total_queries DESC, client_ip) <= 20
+            ORDER BY month DESC, total_queries DESC, client_ip"""),
+        "probe_latest": records("""SELECT observed_at_utc, kind, target, status, elapsed_ms, detail
+            FROM network_probes WHERE observed_at_utc=(SELECT max(observed_at_utc) FROM network_probes)
+            ORDER BY kind,target"""),
+        "probe_daily": records("""SELECT cast(timezone('America/Denver',observed_at_utc) AS DATE) AS local_date,
+            kind, count(*) AS attempts, count(*) FILTER(WHERE status='failure') AS failures,
+            count(*) FILTER(WHERE status='unavailable') AS unavailable
+            FROM network_probes GROUP BY 1,2 ORDER BY 1,2"""),
+    }
+
+
 def make_handler(data):
     # ponytail: one immutable snapshot in memory; query SQLite by range if the archive reaches millions of rows.
-    raw = json.dumps(data, separators=(",", ":"), allow_nan=False).encode()
+    raw = json.dumps(data, separators=(",", ":"), allow_nan=False, default=lambda value: value.isoformat()).encode()
     compressed = gzip.compress(raw)
 
     class Handler(BaseHTTPRequestHandler):
@@ -82,8 +134,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     try:
         data = load_data(args.db)
-    except sqlite3.Error as error:
-        parser.error(f"Cannot read the cleaned database: {error}. Run analysis/clean_speedtests.py first.")
+    except (sqlite3.Error, ValueError, ImportError) as error:
+        parser.error(f"Cannot read the database: {error}. See README.md for setup and import commands.")
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(data))
     print(f"Network archive: http://127.0.0.1:{server.server_port} • {len(data['rows']):,} observations", flush=True)
     try:

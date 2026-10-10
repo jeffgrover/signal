@@ -4,14 +4,15 @@ export const GROUPS = {
   routing: {label: 'Routing / unreachable', color: '#de625b', short: 'Routing'},
   timeout: {label: 'Request timeout', color: '#cc7c45', short: 'Timeout'},
   selection: {label: 'Server selection · uncertain', color: '#9177cc', short: 'Server selection'},
-  service: {label: 'Test service HTTP 502', color: '#a06895', short: 'Test service'},
-  collector: {label: 'Collector parser · recovered', color: '#8190a6', short: 'Collector'},
+  service: {label: 'Test service / configuration', color: '#a06895', short: 'Test service'},
+  collector: {label: 'Collector parser', color: '#8190a6', short: 'Collector'},
   unknown: {label: 'Unclassified failure', color: '#8190a6', short: 'Unclassified'},
 };
 export function failureGroup(kind) {
   if (!kind) return null;
   return ({dns_resolution_failed:'dns', no_route_to_host:'routing', network_unreachable:'routing',
     request_timeout:'timeout', server_selection_failed:'selection', test_service_http_502:'service',
+    timeout:'timeout', server_mismatch:'selection', configuration_failed:'service', service_rejected:'service',
     collector_parse_error:'collector'})[kind] || 'unknown';
 }
 export function mean(values) {

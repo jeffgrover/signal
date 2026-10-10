@@ -1,10 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {decode, select, summarize, dailySeries, rolling, hourlyProfile, weekHeatmap,
-  episodes, recordingGaps, minuteProfile} from '../web/analytics.mjs';
+  episodes, recordingGaps, minuteProfile, failureGroup} from '../web/analytics.mjs';
 
 const fields=['timestamp_local','download_mbps','upload_mbps','latency_ms','failure_kind','client','server_id'];
 const read=rows=>decode({fields,rows});
+
+test('Forward collector failures retain their evidence categories',()=>{
+  assert.equal(failureGroup('timeout'),'timeout');
+  assert.equal(failureGroup('server_mismatch'),'selection');
+  assert.equal(failureGroup('configuration_failed'),'service');
+  assert.equal(failureGroup('service_rejected'),'service');
+  assert.equal(failureGroup('ookla_error'),'unknown');
+});
 
 test('Missing readings stay absent, zero is valid, and endpoint filters retain failure evidence',()=>{
   const rows=read([

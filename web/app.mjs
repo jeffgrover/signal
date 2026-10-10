@@ -32,7 +32,7 @@ function clickDay(id) {
   $(id).on('plotly_click',e=>{if(e.points?.[0]?.x) openDay(String(e.points[0].x).slice(0,10));});
 }
 function trace(name,x,y,color,more={}) {
-  return {name,x,y,type:'scatter',mode:'lines',connectgaps:false,line:{color,width:2.2},
+  return {name,x,y,type:'scatter',mode:'lines+markers',marker:{size:3},connectgaps:false,line:{color,width:2.2},
     hovertemplate:'%{y:,.1f}<extra>%{fullData.name}</extra>',...more};
 }
 function setPressed(selector, match) {
@@ -69,7 +69,7 @@ async function render() {
   $('latency-caption').textContent=`${fmt(s.invalid)} known failure placeholders excluded in this performance selection. High measured latency remains. Client methods differ.`;
   $('export').disabled=!measured.length;
   renderFailureCards(s);renderEpisodes();renderEndpoints();
-  await Promise.all([renderTrend(),renderFailures(),renderMinutes(),renderHourly(),renderHeat(),renderLatency()]);
+  await Promise.all([renderTrend(),renderFailures(),renderMinutes(),renderHourly(),renderHeat(),renderLatency(),renderActivity()]);
   if(version===renderVersion) {
     $('load-status').hidden=true;
     $('selection-label').setAttribute('aria-label',`${fmt(s.count)} observations from ${start} through ${end}`);
@@ -168,6 +168,34 @@ function renderEndpoints() {
   $('endpoint-count').textContent=`${fmt(grouped.length)} client / endpoint pairs`;
   $('endpoint-rows').innerHTML=grouped.length?grouped.slice(0,8).map(g=>`<tr><td><strong>${esc(g.server?.name||'Unknown endpoint')}</strong><span class="subtext">Server ${esc(g.id)}</span></td><td>${esc(g.server?.location||'Not recorded')}</td><td>${clientLabel(g.client)}</td><td class="numeric">${fmt(g.n)}</td><td class="numeric">${fmt(g.down,1)} <span class="subtext-inline">Mbps</span></td><td class="numeric">${fmt(g.up,1)} Mbps</td><td><button class="row-button" data-endpoint="${esc(g.id)}" data-client="${esc(g.client)}">Focus →</button></td></tr>`).join(''):'<tr><td colspan="7" class="empty-row">No endpoints match these filters.</td></tr>';
 }
+async function renderActivity() {
+  const start=$('start').value,end=$('end').value;
+  $('dns-activity').hidden=!(payload.pihole_daily?.length);
+  $('dns-nav').hidden=$('dns-activity').hidden;
+  const dns=(payload.pihole_daily||[]).filter(r=>r.local_date>=start&&r.local_date<=end);
+  if(!$('dns-activity').hidden) {
+    if(dns.length) await plot('dns-chart',[
+      trace('Total DNS queries',dns.map(r=>r.local_date),dns.map(r=>r.total_queries),COLORS.down),
+      trace('Blocked queries',dns.map(r=>r.local_date),dns.map(r=>r.blocked_queries),COLORS.purple)
+    ],{yaxis:{title:{text:'Queries'},gridcolor:COLORS.grid,rangemode:'tozero'},xaxis:{type:'date'}});
+    else await emptyPlot('dns-chart','No Pi-hole observations in this date range.');
+    const months=r=>r.month.slice(0,7)>=start.slice(0,7)&&r.month.slice(0,7)<=end.slice(0,7);
+    $('domain-rows').innerHTML=(payload.pihole_domains||[]).filter(months).map(r=>`<tr><td>${esc(r.month.slice(0,7))}</td><td>${esc(r.domain)}</td><td class="numeric">${fmt(r.total_queries)}</td><td class="numeric">${fmt(r.blocked_queries)}</td></tr>`).join('')||'<tr><td colspan="4">No matching monthly summaries.</td></tr>';
+    $('client-rows').innerHTML=(payload.pihole_clients||[]).filter(months).map(r=>`<tr><td>${esc(r.month.slice(0,7))}</td><td>${esc(r.client_name||r.client_ip)}<span class="subtext">${esc(r.client_ip)}</span></td><td class="numeric">${fmt(r.total_queries)}</td><td class="numeric">${fmt(r.domains)}</td></tr>`).join('')||'<tr><td colspan="4">No matching monthly summaries.</td></tr>';
+  }
+  $('diagnostics').hidden=!(payload.probe_latest?.length);
+  $('probe-nav').hidden=$('diagnostics').hidden;
+  if(!$('diagnostics').hidden) {
+    $('probe-rows').innerHTML=payload.probe_latest.map(r=>`<tr><td>${esc(r.kind)}</td><td>${esc(r.target)}</td><td>${esc(new Date(r.observed_at_utc).toLocaleString())}</td><td title="${esc(r.detail)}">${esc(r.status)}</td></tr>`).join('');
+    const probes=(payload.probe_daily||[]).filter(r=>r.local_date>=start&&r.local_date<=end);
+    if(probes.length) await plot('probe-chart',[...new Set(probes.map(r=>r.kind))].map((kind,i)=>{
+      const points=probes.filter(r=>r.kind===kind);
+      return {type:'bar',name:kind,x:points.map(r=>r.local_date),y:points.map(r=>r.failures),
+        marker:{color:[COLORS.purple,COLORS.down,COLORS.up][i%3]}};
+    }),{barmode:'stack',xaxis:{type:'date'},yaxis:{title:{text:'Failed probes'},gridcolor:COLORS.grid,rangemode:'tozero'}});
+    else await emptyPlot('probe-chart','No connectivity checks in this date range.');
+  }
+}
 function renderArchiveNotes() {
   const full=select(rows,firstDate,lastDate),s=summarize(rows,full.measured),gaps=recordingGaps(rows);
   const corrected=rows.filter(r=>r.bandwidth_status==='corrected_x8').length,recovered=rows.filter(r=>r.bandwidth_status==='recovered_from_log').length;
@@ -184,6 +212,15 @@ function renderArchiveNotes() {
   $('recommend-dns').onclick=()=>{focus='dns';applyRange('all');$('failures').scrollIntoView({behavior:'smooth'});};
   $('recommend-collector').onclick=()=>{focus='selection';applyRange('all');$('schedule').scrollIntoView({behavior:'smooth'});};
   $('archive-footer').textContent=`${dateLabel(lastDate)} snapshot · ${fmt(rows.length)} observations · offline charts`;
+  if(payload.meta?.storage==='signal_duckdb') {
+    $('quality-summary').innerHTML=[
+      [fmt(rows.filter(r=>r.source_name==='collector').length),'forward measurement attempts'],
+      [fmt(rows.filter(r=>r.source_name==='legacy-bandwidth').length),'historical observations'],
+      [fmt(corrected),'historical corrections preserved'],[fmt(s.invalid),'known invalid latency readings excluded']
+    ].map(([n,label])=>`<div class="quality-item"><strong>${n}</strong><span>${label}</span></div>`).join('');
+    $('recommendations').innerHTML='<article class="recommendation"><h3>Keep endpoint comparisons consistent</h3><p>Use the client and endpoint filters to compare historical measurements with the fixed-server collector.</p></article><article class="recommendation"><h3>Inspect each network layer</h3><p>The connectivity table distinguishes DNS resolution, gateway reachability, and an external-IP ping. Compare probe failures with speedtest failures; neither alone proves an ISP outage.</p></article><article class="recommendation"><h3>Watch the collector clock</h3><p>The Pi checks for missing attempts every five minutes. This viewer is a snapshot: rebuild it to see newer measurements.</p></article>';
+    $('archive-footer').textContent=`Exported ${new Date(payload.meta.created_utc).toLocaleString()} · ${fmt(rows.length)} observations · private snapshot`;
+  }
 }
 async function openDay(date) {
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
@@ -195,8 +232,8 @@ async function openDay(date) {
     let label=r.failure_kind?GROUPS[r.group].short:'Measured';
     if(r.bandwidth_status==='corrected_x8') label='Corrected ×8';
     if(r.bandwidth_status==='recovered_from_log') label='Recovered parser result';
-    if(r.latency_status==='invalid_cli_failure_sentinel') label='Measured · invalid latency';
-    const detail=`Row ${r.source_rowid}${r.source_log_line?' · Log line '+r.source_log_line:''}. Original down: ${r.original_download}; up: ${r.original_upload}; ping: ${r.original_ping}. ${r.original_error||''}`;
+    if(r.latency_status==='invalid_cli_failure_sentinel') label+=' · invalid latency';
+    const detail=`Row ${r.source_rowid??r.attempt_id}${r.source_log_line?' · Log line '+r.source_log_line:''}. Original down: ${r.original_download}; up: ${r.original_upload}; ping: ${r.original_ping}. ${r.original_error||''}`;
     return `<tr><td>${esc(r.timestamp_local.slice(11,19))}</td><td class="numeric">${fmt(r.download_mbps,1)}</td><td class="numeric">${fmt(r.upload_mbps,1)}</td><td class="numeric">${fmt(r.latency_ms,1)}</td><td><span class="quality-tag ${r.group||r.latency_status==='invalid_cli_failure_sentinel'?'warn':''}" title="${esc(detail)}">${esc(label)}</span></td><td>${esc(servers.get(r.server_id)?.name||'Not recorded')}</td></tr>`;
   }).join(''):'<tr><td colspan="6" class="empty-row">No observations were recorded on this day.</td></tr>';
   if(!$('day-dialog').open) $('day-dialog').showModal();
@@ -211,7 +248,7 @@ async function openDay(date) {
     yaxis:{title:{text:'Mbps',font:{size:10}},rangemode:'tozero',gridcolor:COLORS.grid,zeroline:false,tickfont:{size:10}}});
 }
 function exportSamples() {
-  const fields=['source_rowid','timestamp_local','download_mbps','upload_mbps','latency_ms','client','server_id','bandwidth_status','latency_status','original_download','original_upload','original_ping','source_log_line'];
+  const fields=['source_rowid','timestamp_local','download_mbps','upload_mbps','latency_ms','client','server_id','bandwidth_status','latency_status','original_download','original_upload','original_ping','source_log_line',...(payload.meta?.storage==='signal_duckdb'?['attempt_id','observed_at_utc','source_name']:[])];
   const cell=value=>{let s=String(value??'');if(typeof value==='string'&&/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"';};
   const csv=[fields.join(','),...measured.map(r=>fields.map(k=>cell(r[k])).join(','))].join('\r\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
@@ -239,11 +276,11 @@ function wireEvents() {
   $('export').onclick=exportSamples;
   const navLinks=[...document.querySelectorAll('nav a')];
   const observer=new IntersectionObserver(entries=>{for(const entry of entries){if(entry.isIntersecting){navLinks.forEach(a=>a.classList.toggle('active',a.hash==='#'+entry.target.id));}}},{rootMargin:'-10% 0px -65% 0px'});
-  ['overview','history','failures','rhythm','investigate'].forEach(id=>observer.observe($(id)));
+  ['overview','history','failures','rhythm','investigate','dns-activity','diagnostics'].forEach(id=>observer.observe($(id)));
 }
 async function init() {
   try {
-    const response=await fetch('/api/data');if(!response.ok)throw new Error(`Archive request failed (${response.status})`);
+    const response=await fetch(document.body.dataset.source||'/api/data');if(!response.ok)throw new Error(`Archive request failed (${response.status})`);
     payload=await response.json();rows=decode(payload);
     if(!rows.length)throw new Error('The analysis database has no observations.');
     const dates=rows.map(r=>r.date).sort();firstDate=dates[0];lastDate=dates.at(-1);

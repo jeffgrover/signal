@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Signal — Home network observatory</title>
-  <link rel="stylesheet" href="/app.css">
-  <script defer src="/vendor/plotly.min.js"></script>
-  <script type="module" src="/app.mjs"></script>
+  <link rel="stylesheet" href="./app.css">
+  <script defer src="./vendor/plotly.min.js"></script>
+  <script type="module" src="./app.mjs"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to dashboard</a>
@@ -19,12 +19,14 @@
     <a href="#failures"><span aria-hidden="true">◉</span> Outages & failures</a>
     <a href="#rhythm"><span aria-hidden="true">◷</span> Daily patterns</a>
     <a href="#investigate"><span aria-hidden="true">⌕</span> Investigate next</a>
+    <a href="#dns-activity" id="dns-nav" hidden><span aria-hidden="true">≋</span> DNS activity</a>
+    <a href="#diagnostics" id="probe-nav" hidden><span aria-hidden="true">⊙</span> Connectivity checks</a>
   </nav>
-  <div class="sidebar-note"><span class="status-dot"></span> Local archive<br><small>Rock 5B · 1 Gb Ethernet<br>Read-only analysis snapshot</small></div>
+  <div class="sidebar-note"><span class="status-dot"></span> Network archive<br><small>Read-only snapshot<br>Updated by the export pipeline</small></div>
   <div class="sidebar-bottom">A little more signal.<br>A little less guesswork.</div>
 </aside>
 <main id="main">
-  <header class="topbar"><span>Home network <span class="breadcrumb">/</span> <strong>Archive explorer</strong></span><span class="snapshot-pill"><span class="status-dot"></span> HISTORICAL SNAPSHOT</span></header>
+  <header class="topbar"><span>Home network <span class="breadcrumb">/</span> <strong>Archive explorer</strong></span><span class="snapshot-pill"><span class="status-dot"></span> DATA SNAPSHOT</span></header>
   <div class="content" id="overview">
     <div class="page-heading"><div><p class="eyebrow">KNOW YOUR CONNECTION</p><h1>Network overview<span>.</span></h1><p class="intro">The trends, interruptions, and questions hidden in your network history.</p></div><button id="export" class="button secondary" disabled>↓ Export samples</button></div>
     <div id="load-status" role="status" class="load-status">Opening your network archive…</div>
@@ -67,7 +69,9 @@
     </div>
     <section class="panel" id="endpoints"><div class="panel-heading"><div><h2>Compare like with like</h2><p>Changing test endpoints can change the result. Focus on one client and server.</p></div><span id="endpoint-count" class="quiet-badge">—</span></div><div class="table-wrap"><table><thead><tr><th>Test endpoint</th><th>Location</th><th>Client</th><th class="numeric">Tests</th><th class="numeric">Avg. download</th><th class="numeric">Avg. upload</th><th></th></tr></thead><tbody id="endpoint-rows"></tbody></table></div><div class="panel-footer"><span>Top 8 client/endpoint combinations by measured tests in this view.</span><button id="clear-performance" class="text-button">Clear performance filters</button></div></section>
     <section id="investigate" class="investigations"><div class="section-heading"><div><p class="section-number">04 / FOLLOW THE SIGNAL</p><h2>Where to look next</h2><p>Suggested investigations from the full archive—and the measurements that would make them stronger.</p></div></div><div id="recommendations" class="recommendation-grid"></div></section>
-    <section class="panel" id="quality"><div class="panel-heading"><div><h2>An honest accounting of the data</h2><p>Corrections improve the measurements without erasing the evidence.</p></div><span class="quiet-badge">Full archive</span></div><div id="quality-summary" class="quality-grid"></div><details><summary>Recording gaps and interpretation notes</summary><div class="details-content"><p>Gaps are missing observations, not proven internet outages. The intervals below are longer than two hours, measured on the recorded local clock. Smaller gaps and clock changes are not included.</p><div class="table-wrap"><table><thead><tr><th>Last observation before gap</th><th>First observation after gap</th><th class="numeric">Recording gap</th></tr></thead><tbody id="gap-rows"></tbody></table></div><p>Two redundant Pi-hole resolvers are available for comparison, but these records do not identify which resolver handled a test. DNS failures are not automatically WAN failures. Timestamps have no stored timezone offsets; client latency methods differ. Test averages are sample averages, not time-weighted service guarantees. The archive is a snapshot, not a live monitor.</p></div></details></section>
+    <section class="panel" id="quality"><div class="panel-heading"><div><h2>An honest accounting of the data</h2><p>Corrections improve the measurements without erasing the evidence.</p></div><span class="quiet-badge">Full archive</span></div><div id="quality-summary" class="quality-grid"></div><details><summary>Recording gaps and interpretation notes</summary><div class="details-content"><p>Gaps are missing observations, not proven internet outages. The intervals below are longer than two hours, measured on the recorded local clock. Smaller gaps and clock changes are not included.</p><div class="table-wrap"><table><thead><tr><th>Last observation before gap</th><th>First observation after gap</th><th class="numeric">Recording gap</th></tr></thead><tbody id="gap-rows"></tbody></table></div><p>Speedtest DNS failures do not identify which resolver handled the test and are not automatically WAN failures. Independent probes provide separate evidence when available. Historical timestamps have no stored timezone offsets; forward attempts also retain UTC. Client latency methods differ. Test averages are sample averages, not time-weighted service guarantees. The archive is a snapshot, not a live monitor.</p></div></details></section>
+    <section class="panel" id="dns-activity" hidden><div class="panel-heading"><div><h2>DNS activity</h2><p id="dns-caption">Pi-hole query volume in the selected date range.</p></div></div><div id="dns-chart" class="chart secondary-chart" role="img" aria-label="Daily total and blocked DNS queries"></div><div class="table-wrap"><table><thead><tr><th>Month</th><th>Top domain</th><th class="numeric">Queries</th><th class="numeric">Blocked</th></tr></thead><tbody id="domain-rows"></tbody></table></div><div class="table-wrap"><table><thead><tr><th>Month</th><th>Client</th><th class="numeric">Queries</th><th class="numeric">Domains</th></tr></thead><tbody id="client-rows"></tbody></table></div><div class="chart-note">Daily volume follows the date filters. The tables show full-month counts for overlapping months, limited to the top 20 entries per month.</div></section>
+    <section class="panel" id="diagnostics" hidden><div class="panel-heading"><div><h2>Connectivity checks</h2><p>Independent DNS, gateway, and external-IP probes.</p></div></div><div class="table-wrap"><table><thead><tr><th>Probe</th><th>Target</th><th>Latest recorded check</th><th>Result</th></tr></thead><tbody id="probe-rows"></tbody></table></div><div id="probe-chart" class="chart secondary-chart" role="img" aria-label="Daily failed connectivity probes"></div><div class="chart-note">The table shows each target's latest result in this snapshot; the chart follows the date range. A failed ping can mean ICMP is blocked. Missing probes and failed tests are not uptime percentages.</div></section>
     <footer class="footer"><span>SIGNAL <span>·</span> Built from your network, for your network.</span><span id="archive-footer">Local data · offline charts · read-only</span></footer>
   </div>
 </main>
