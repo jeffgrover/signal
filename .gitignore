@@ -21,6 +21,7 @@ target
 #.idea/
 
 # Local copies used for the home-network review
+/.venv/
 /speedtest-review-*.db*
 /pihole-FTL-review-*.db*
 /production-collector-review.py
