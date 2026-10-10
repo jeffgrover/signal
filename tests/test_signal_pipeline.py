@@ -91,6 +91,7 @@ class SignalPipelineTest(unittest.TestCase):
         self.assertEqual(records[-1]["client"], "ookla")
         self.assertEqual(records[-1]["download_mbps"], 0)
         self.assertIsNotNone(records[-1]["observed_at_utc"])
+        self.assertEqual(data["servers"], [("31903", "Google Fiber", "Salt Lake City", "United States")])
         self.assertEqual(data["pihole_daily"][0]["blocked_queries"], 1)
         self.assertEqual(data["pihole_domains"][0]["domain"], "example.com")
         self.assertEqual(data["pihole_clients"][0]["client_name"], "Laptop <private>")

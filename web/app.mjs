@@ -170,6 +170,7 @@ function renderEndpoints() {
 }
 async function renderActivity() {
   const start=$('start').value,end=$('end').value;
+  const dateAxis={type:'date',tickformat:'%b %d',range:[Date.parse(start+'T00:00:00Z')-DAY/2,Date.parse(end+'T00:00:00Z')+DAY/2]};
   $('dns-activity').hidden=!(payload.pihole_daily?.length);
   $('dns-nav').hidden=$('dns-activity').hidden;
   const dns=(payload.pihole_daily||[]).filter(r=>r.local_date>=start&&r.local_date<=end);
@@ -177,7 +178,7 @@ async function renderActivity() {
     if(dns.length) await plot('dns-chart',[
       trace('Total DNS queries',dns.map(r=>r.local_date),dns.map(r=>r.total_queries),COLORS.down),
       trace('Blocked queries',dns.map(r=>r.local_date),dns.map(r=>r.blocked_queries),COLORS.purple)
-    ],{yaxis:{title:{text:'Queries'},gridcolor:COLORS.grid,rangemode:'tozero'},xaxis:{type:'date'}});
+    ],{yaxis:{title:{text:'Queries'},gridcolor:COLORS.grid,rangemode:'tozero'},xaxis:{...dateAxis}});
     else await emptyPlot('dns-chart','No Pi-hole observations in this date range.');
     const months=r=>r.month.slice(0,7)>=start.slice(0,7)&&r.month.slice(0,7)<=end.slice(0,7);
     $('domain-rows').innerHTML=(payload.pihole_domains||[]).filter(months).map(r=>`<tr><td>${esc(r.month.slice(0,7))}</td><td>${esc(r.domain)}</td><td class="numeric">${fmt(r.total_queries)}</td><td class="numeric">${fmt(r.blocked_queries)}</td></tr>`).join('')||'<tr><td colspan="4">No matching monthly summaries.</td></tr>';
@@ -192,7 +193,7 @@ async function renderActivity() {
       const points=probes.filter(r=>r.kind===kind);
       return {type:'bar',name:kind,x:points.map(r=>r.local_date),y:points.map(r=>r.failures),
         marker:{color:[COLORS.purple,COLORS.down,COLORS.up][i%3]}};
-    }),{barmode:'stack',xaxis:{type:'date'},yaxis:{title:{text:'Failed probes'},gridcolor:COLORS.grid,rangemode:'tozero'}});
+    }),{barmode:'stack',xaxis:{...dateAxis},yaxis:{title:{text:'Failed probes'},gridcolor:COLORS.grid,rangemode:'tozero'}});
     else await emptyPlot('probe-chart','No connectivity checks in this date range.');
   }
 }

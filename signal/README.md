@@ -180,6 +180,7 @@ import sqlite3
 target = Path('signal/data/pihole-snapshot.db').resolve()
 if target.exists():
     raise SystemExit('Backup already exists; choose a new filename')
+target.touch(mode=0o600, exist_ok=False)
 with sqlite3.connect('file:/etc/pihole/pihole-FTL.db?mode=ro', uri=True) as source:
     with sqlite3.connect(target) as backup:
         source.backup(backup)
@@ -216,6 +217,7 @@ source = Path('signal/data/signal.duckdb')
 target = Path('signal/data/viewer-snapshot.duckdb')
 if target.exists():
     raise SystemExit('Snapshot already exists; choose a new filename')
+target.touch(mode=0o600, exist_ok=False)
 with duckdb.connect(str(source)) as conn:
     conn.execute('CHECKPOINT')
     shutil.copyfile(source, target)
@@ -227,6 +229,7 @@ On the laptop, copy that offline file using SCP (substitute your host and path),
 then build locally. Preserve any existing laptop database before replacing it:
 
 ```sh
+umask 077
 mkdir -p signal/data
 scp USER@HOST:/path/to/signal/signal/data/viewer-snapshot.duckdb signal/data/viewer-snapshot.duckdb
 .venv/bin/python signal/export_static.py --db signal/data/viewer-snapshot.duckdb

@@ -63,8 +63,11 @@ def signal_data(conn):
         ORDER BY CASE WHEN s.source_name='legacy-bandwidth' THEN 0 ELSE 1 END,
                  s.source_rowid, s.observed_at_utc, s.attempt_no, s.attempt_id
     """).fetchall()
-    servers = conn.execute("""SELECT DISTINCT server_id, server_name, server_location, server_country
-                              FROM speedtest_attempts WHERE server_id IS NOT NULL""").fetchall()
+    servers = conn.execute("""SELECT server_id, server_name, server_location, server_country
+        FROM speedtest_attempts WHERE server_id IS NOT NULL
+        QUALIFY row_number() OVER (PARTITION BY server_id ORDER BY server_name IS NULL,
+            observed_at_utc DESC NULLS LAST, observed_at_local DESC, attempt_id)=1
+        ORDER BY server_id""").fetchall()
 
     def records(query):
         cursor = conn.execute(query)
