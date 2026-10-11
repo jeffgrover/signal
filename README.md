@@ -103,7 +103,10 @@ five-minute health checks. The latter record separate DNS/gateway/external
 probes, detect stale collector data, and send transition/recovery alerts through
 the configured notification hook. `signal/collector-run.sh status` reports
 both jobs, recent data/probes, and pending delivery. See [signal/README.md](signal/README.md)
-for dependencies, alert setup, overrides, and the off-host monitoring limitation.
+for dependencies, alert setup, and overrides. Optional Healthchecks.io heartbeats
+are sent only after recorded collection, so cloud alerts can detect a dead host,
+stopped cron, or loss of internet access without exposing a home-network endpoint.
+See [off-host setup](signal/README.md#off-host-heartbeat-healthchecksio).
 
 On the laptop, after transferring a consistent collector database copy and
 the immutable archives:

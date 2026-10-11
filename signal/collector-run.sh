@@ -45,7 +45,7 @@ run_once() {
     local speedtest
     mkdir -p "$(dirname -- "$LOG")" "$(dirname -- "$LOCK")"
     speedtest="$(resolve_speedtest 2>>"$LOG")" || return 1
-    "$(command -v timeout)" --kill-after=10 "$TIMEOUT_SECONDS" "$PYTHON" "$COLLECTOR" --db "$DB" --speedtest "$speedtest" --once >>"$LOG" 2>&1
+    SIGNAL_HEALTHCHECK_URL="${SIGNAL_HEALTHCHECK_URL:-}" "$(command -v timeout)" --kill-after=10 "$TIMEOUT_SECONDS" "$PYTHON" "$COLLECTOR" --db "$DB" --speedtest "$speedtest" --once >>"$LOG" 2>&1
 }
 
 notify_failure() {
@@ -139,6 +139,12 @@ status() {
             printf 'Health notification: pending delivery\n'
             exit_code=1
         fi
+    fi
+
+    if [[ -n "${SIGNAL_HEALTHCHECK_URL:-}" ]]; then
+        printf 'Healthchecks: configured (sent after recorded collection; see collector log for delivery)\n'
+    else
+        printf 'Healthchecks: not configured\n'
     fi
 
     if [[ -s "$LOG" ]]; then

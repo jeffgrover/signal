@@ -114,10 +114,12 @@ class CollectorRunnerTest(unittest.TestCase):
             speedtest.chmod(0o755)
             python_args = temp / "python-args"
             fake_python = temp / "python"
-            fake_python.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$PYTHON_ARGS\"\n")
+            heartbeat_capture = temp / "heartbeat-url"
+            fake_python.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$PYTHON_ARGS\"\nprintf '%s' \"$SIGNAL_HEALTHCHECK_URL\" > \"$HEARTBEAT_CAPTURE\"\n")
             fake_python.chmod(0o755)
             env_file = temp / "collector.env"
-            env_file.write_text(f"SIGNAL_SPEEDTEST={speedtest}\n")
+            heartbeat_url = "https://hc-ping.com/123e4567-e89b-12d3-a456-426614174000"
+            env_file.write_text(f"SIGNAL_SPEEDTEST={speedtest}\nSIGNAL_HEALTHCHECK_URL={heartbeat_url}\n")
 
             result = subprocess.run(
                 [str(ROOT / "signal" / "collector-run.sh"), "run"],
@@ -126,6 +128,7 @@ class CollectorRunnerTest(unittest.TestCase):
                 env={
                     **os.environ,
                     "PYTHON_ARGS": str(python_args),
+                    "HEARTBEAT_CAPTURE": str(heartbeat_capture),
                     "SIGNAL_ENV_FILE": str(env_file),
                     "SIGNAL_LOCK": str(temp / "locks" / "collector.lock"),
                     "SIGNAL_LOG": str(temp / "collector.log"),
@@ -136,6 +139,7 @@ class CollectorRunnerTest(unittest.TestCase):
             args = python_args.read_text().splitlines()
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(args[args.index("--speedtest") + 1], str(speedtest))
+            self.assertEqual(heartbeat_capture.read_text(), heartbeat_url)
 
     def test_install_rejects_speedtest_cli_and_pins_ookla_path(self):
         with TemporaryDirectory() as temp:
@@ -237,6 +241,7 @@ class CollectorRunnerTest(unittest.TestCase):
                     "SIGNAL_ENV_FILE": str(temp / "missing.env"),
                     "SIGNAL_LOG": str(log),
                     "SIGNAL_PYTHON": sys.executable,
+                    "SIGNAL_HEALTHCHECK_URL": "https://hc-ping.com/123e4567-e89b-12d3-a456-426614174000",
                 },
                 check=False,
             )
@@ -246,6 +251,8 @@ class CollectorRunnerTest(unittest.TestCase):
             self.assertIn("Latest log: collected run-id using 31903", result.stdout)
             self.assertIn(f"Latest attempt: {local} | success | down 800.0 Mbps | up 400.0 Mbps", result.stdout)
             self.assertIn("Health: healthy", result.stdout)
+            self.assertIn("Healthchecks: configured", result.stdout)
+            self.assertNotIn("hc-ping.com", result.stdout)
 
 
 if __name__ == "__main__":

@@ -5,13 +5,17 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timedelta, timezone
+from http.client import HTTPException
 import json
 import math
 import os
 from pathlib import Path
 import subprocess
 import time
-from uuid import uuid4
+from urllib.error import URLError
+from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
+from uuid import UUID, uuid4
 
 from db import DEFAULT_DB, connect, ensure_schema
 
@@ -126,6 +130,26 @@ def insert_attempt(conn, run_id: str, observed_utc: datetime, attempt_no: int, r
     )
 
 
+def send_heartbeat(url: str) -> bool | None:
+    """Report recorded activity, without uploading telemetry or failing collection."""
+    if not url:
+        return None
+    try:
+        parsed = urlsplit(url)
+        if (parsed.scheme != "https" or parsed.netloc != "hc-ping.com"
+                or parsed.query or parsed.fragment or parsed.path != f"/{UUID(parsed.path[1:])}"):
+            raise ValueError("invalid Healthchecks URL")
+        with urlopen(Request(url, data=b"", method="POST"), timeout=10) as response:
+            if response.status != 200 or response.read(64).strip() != b"OK":
+                raise ValueError("heartbeat was not accepted")
+    except (OSError, URLError, HTTPException, ValueError):
+        # Do not log exceptions: they may contain the private ping URL.
+        print("Healthchecks heartbeat: delivery failed; retry after the next recorded run.", flush=True)
+        return False
+    print("Healthchecks heartbeat: delivered", flush=True)
+    return True
+
+
 def collect_once(conn, executable: str, server_ids: tuple[str, ...], timeout: int, client_version: str) -> tuple[str, bool]:
     run_id = str(uuid4())
     succeeded = False
@@ -138,6 +162,8 @@ def collect_once(conn, executable: str, server_ids: tuple[str, ...], timeout: in
         if not should_try_fallback(record):
             break
     conn.commit()
+    if server_ids:
+        send_heartbeat(os.environ.get("SIGNAL_HEALTHCHECK_URL", ""))
     return run_id, succeeded
 
 

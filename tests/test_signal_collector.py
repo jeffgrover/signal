@@ -1,17 +1,94 @@
 """Small checks for the forward collector's hard-to-see edges."""
 
 from datetime import datetime
+import io
+import os
 from pathlib import Path
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+from urllib.error import URLError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "signal"))
 
-from collector import OoklaError, classify_error, collect_once, main, next_boundary, parse_ookla, should_try_fallback  # noqa: E402
+from collector import OoklaError, classify_error, collect_once, main, next_boundary, parse_ookla, send_heartbeat, should_try_fallback  # noqa: E402
+
+
+PING_URL = "https://hc-ping.com/123e4567-e89b-12d3-a456-426614174000"
 
 
 class SignalCollectorTest(unittest.TestCase):
+    def setUp(self):
+        environment = patch.dict(os.environ, {"SIGNAL_HEALTHCHECK_URL": ""})
+        environment.start()
+        self.addCleanup(environment.stop)
+
+    def test_heartbeat_is_optional_private_and_checks_acceptance(self):
+        with patch("collector.urlopen") as open_url, patch("sys.stdout", new_callable=io.StringIO) as output:
+            self.assertIsNone(send_heartbeat(""))
+            open_url.assert_not_called()
+            response = open_url.return_value.__enter__.return_value
+            response.status = 200
+            response.read.return_value = b"OK"
+            self.assertTrue(send_heartbeat(PING_URL))
+            request = open_url.call_args.args[0]
+            self.assertEqual(request.full_url, PING_URL)
+            self.assertEqual(request.get_method(), "POST")
+            self.assertEqual(request.data, b"")
+            self.assertEqual(open_url.call_args.kwargs, {"timeout": 10})
+            response.read.return_value = b"OK (not found)"
+            self.assertFalse(send_heartbeat(PING_URL))
+            response.read.return_value = b"OK (rate limited)"
+            self.assertFalse(send_heartbeat(PING_URL))
+            response.status = 503
+            response.read.return_value = b"OK"
+            self.assertFalse(send_heartbeat(PING_URL))
+            open_url.side_effect = URLError(PING_URL)
+            self.assertFalse(send_heartbeat(PING_URL))
+            open_url.side_effect = TimeoutError(PING_URL)
+            self.assertFalse(send_heartbeat(PING_URL))
+            self.assertNotIn(PING_URL, output.getvalue())
+            self.assertIn("delivery failed", output.getvalue())
+
+    def test_heartbeat_rejects_insecure_wrong_host_and_non_success_urls(self):
+        for url in (PING_URL.replace("https:", "http:"), PING_URL.replace("hc-ping.com", "example.com"),
+                    PING_URL + "/fail", PING_URL + "?create=1", "https://hc-ping.com/not-a-uuid"):
+            with self.subTest(url=url), patch("collector.urlopen") as open_url, patch("sys.stdout", new_callable=io.StringIO) as output:
+                self.assertFalse(send_heartbeat(url))
+                open_url.assert_not_called()
+                self.assertNotIn(url, output.getvalue())
+
+    def test_heartbeat_follows_commit_for_both_success_and_recorded_failure(self):
+        for status in ("success", "failure"):
+            with self.subTest(status=status), patch.dict(os.environ, {"SIGNAL_HEALTHCHECK_URL": PING_URL}), \
+                    patch("collector.insert_attempt") as insert, patch("collector.run_attempt", return_value={"status": status}), \
+                    patch("collector.send_heartbeat", return_value=False) as heartbeat:
+                conn = Mock()
+                calls = Mock()
+                calls.attach_mock(insert, "insert")
+                calls.attach_mock(conn.commit, "commit")
+                calls.attach_mock(heartbeat, "heartbeat")
+                _, succeeded = collect_once(conn, "speedtest", ("1",), 1, "Ookla")
+                self.assertEqual(succeeded, status == "success")
+                self.assertEqual([call[0] for call in calls.mock_calls], ["insert", "commit", "heartbeat"])
+                heartbeat.assert_called_once_with(PING_URL)
+
+    def test_no_heartbeat_if_database_write_or_commit_fails(self):
+        for failure_at in ("insert", "commit"):
+            with self.subTest(failure_at=failure_at), patch("collector.insert_attempt") as insert, \
+                    patch("collector.run_attempt", return_value={"status": "success"}), patch("collector.send_heartbeat") as heartbeat:
+                conn = Mock()
+                (insert if failure_at == "insert" else conn.commit).side_effect = RuntimeError("storage failure")
+                with self.assertRaises(RuntimeError):
+                    collect_once(conn, "speedtest", ("1",), 1, "Ookla")
+                heartbeat.assert_not_called()
+
+    def test_empty_server_list_cannot_send_a_heartbeat(self):
+        with patch("collector.send_heartbeat") as heartbeat:
+            _, succeeded = collect_once(Mock(), "speedtest", (), 1, "Ookla")
+            self.assertFalse(succeeded)
+            heartbeat.assert_not_called()
+
     def test_ookla_json_uses_bytes_per_second_and_server_identity(self):
         payload = (
             '{"download":{"bandwidth":100000000},"upload":{"bandwidth":50000000},'

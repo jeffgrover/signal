@@ -157,12 +157,55 @@ busy. Missing tools/configuration are reported explicitly, not silently
 counted as working probes. DNS answers can be cached, and an ICMP failure
 can mean ping is blocked: neither establishes an ISP outage or uptime.
 
-<!-- shortcut: checks run on the collection host; add an off-host heartbeat monitor to detect a dead host or stopped cron daemon. -->
 A local cron check can detect a stopped collector schedule while cron itself
 still works. It cannot notify while the Pi is off, cron is stopped, or the
 internet connection is completely down. Detecting those silences promptly
 requires an off-host heartbeat monitor; local probe history and pending
 recovery notices still preserve evidence once operation resumes.
+
+## Off-host heartbeat (Healthchecks.io)
+
+Create one check at [Healthchecks.io](https://healthchecks.io/) named
+`Signal collector heartbeat`, with a **15-minute period** and a **15-minute
+grace time**. This alerts about 30 minutes after the last recorded run. Configure
+the check's ntfy integration for your existing private topic; an email integration
+can be kept as a backup. The free plan's 20-check limit counts monitored jobs,
+not individual heartbeat requests.
+
+Add the check's UUID ping URL to the collection machine's private
+`~/.config/signal/collector.env` (keep that file mode `600`):
+
+```sh
+SIGNAL_HEALTHCHECK_URL='https://hc-ping.com/YOUR_CHECK_UUID'
+```
+
+No cron changes are needed. The wrapper passes the URL to the collector, which
+sends an empty HTTPS POST only **after a new attempt has been stored and
+committed**. Both successful and failed speedtests count as activity; existing
+alerts still report measurement failures. A database failure, missing CLI,
+stuck run, or stopped schedule does not send a heartbeat. There is no independent
+"I'm alive" job that could hide a broken collector.
+
+The URL must be the check's `https://hc-ping.com/<uuid>` success URL, without
+`/start`, `/fail`, or query parameters. It is a private capability: anyone who
+knows it can spoof activity. Do not put it in Git or chat. For direct development
+runs of `collector.py`, export the variable first; the shell wrapper handles it
+automatically. Unconfigured collection behaves as before.
+
+Heartbeat delivery has a ten-second network timeout, validates Healthchecks'
+`OK` response, and logs only a generic success/failure message. A delivery failure
+does not fail or repeat an otherwise successful measurement; the next recorded
+run tries again. `collector-run.sh status` reports whether it is configured;
+the collector log and Healthchecks dashboard show delivery. Verify a real
+scheduled run appears in the dashboard, then use the integration's test button
+to check notification delivery without stopping production collection.
+
+No metrics, DNS history, hostnames, or diagnostic logs are uploaded. Healthchecks
+still sees the request's source IP and arrival time, and stores your notification
+destination. Its missing-heartbeat alert detects silence, not whether the cause
+was the collector, power, DNS, or internet access. Receiving the cloud alert
+during a home-network outage requires another working connection, such as a
+phone's mobile data; the offline laptop cannot receive it until it reconnects.
 
 ## Import and static build
 
